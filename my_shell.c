@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
 
 #define MAX_INPUT_SIZE 1024
 #define MAX_TOKEN_SIZE 64
@@ -78,6 +79,12 @@ int main(int argc, char *argv[])
 			free(tokens);
 			continue;
 		}
+		else if (!strcmp(tokens[0], "exit"))
+		{
+			kill(0, SIGKILL);
+			exit(0);
+		}
+
 		else if (!strcmp(tokens[0], "cd"))
 		{
 			if (tokens[1] == NULL)
