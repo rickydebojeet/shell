@@ -52,7 +52,7 @@ int main(int argc, char *argv[])
 	while (1)
 	{
 		bzero(line, sizeof(line));
-		printf("$ ");
+		printf(">$ ");
 		scanf("%[^\n]", line);
 		getchar();
 
