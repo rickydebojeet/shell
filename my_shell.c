@@ -63,6 +63,18 @@ int main(int argc, char *argv[])
 		{
 			continue;
 		}
+		else if (strcmp(tokens[0], "cd") == 0)
+		{
+			if (tokens[1] == NULL)
+			{
+				printf("Shell: Incorrect command\n");
+			}
+			else if (chdir(tokens[1]) != 0)
+			{
+				printf("Shell: Incorrect command\n");
+			}
+			continue;
+		}
 
 		int fc = fork();
 		if (fc < 0)
