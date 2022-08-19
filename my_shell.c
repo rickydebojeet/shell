@@ -16,14 +16,25 @@ char **tokenize(char *, char);
 void prompt();
 int command_handler(char **);
 void execute_command(char **, int);
+void int_handler_child(int);
+void int_handler_parent(int);
 
 int prompt_flag;
+struct sigaction act_child;
+struct sigaction act_parent;
+pid_t pid;
 
 int main(int argc, char *argv[])
 {
 	char line[MAX_INPUT_SIZE];
 	char **tokens;
 	prompt_flag = 1;
+
+	act_child.sa_handler = int_handler_child;
+	act_parent.sa_handler = int_handler_parent;
+
+	sigaction(SIGCHLD, &act_child, 0);
+	sigaction(SIGINT, &act_parent, 0);
 
 	while (1)
 	{
@@ -46,11 +57,6 @@ int main(int argc, char *argv[])
 		}
 
 		command_handler(tokens);
-
-		while (waitpid(-1, NULL, WNOHANG) > 0)
-		{
-			printf("Shell: Background process finished\n");
-		}
 	}
 	return 0;
 }
@@ -155,24 +161,25 @@ int command_handler(char *tokens[])
 
 void execute_command(char *tokens[], int process_type)
 {
-	int fc = fork();
-	if (fc < 0)
+	pid = fork();
+	if (pid < 0)
 	{
 		fprintf(stderr, "%s\n", "Unable to fork");
 	}
-	else if (fc == 0)
+	else if (pid == 0)
 	{
+		signal(SIGINT, SIG_IGN);
 		execvp(tokens[0], tokens);
 		printf("Command execution failed\n");
 		_exit(1);
 	}
 	else if (!process_type)
 	{
-		waitpid(fc, NULL, 0);
+		waitpid(pid, NULL, 0);
 	}
 	else
 	{
-		printf("Background process created with pid: %d\n", fc);
+		printf("Background process created with pid: %d\n", pid);
 		process_type = FG_P;
 	}
 
@@ -182,4 +189,17 @@ void execute_command(char *tokens[], int process_type)
 		free(tokens[i]);
 	}
 	free(tokens);
+}
+
+void int_handler_child(int sig)
+{
+	while (waitpid(-1, NULL, WNOHANG) > 0)
+	{
+		printf("Shell: Background process finished\n");
+	}
+}
+
+void int_handler_parent(int p)
+{
+	printf("Shell: Ctrl+C pressed\n");
 }
