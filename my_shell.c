@@ -9,33 +9,103 @@
 #define MAX_TOKEN_SIZE 64
 #define MAX_NUM_TOKENS 64
 
-/* Splits the string by space and returns the array of tokens
+#define BG_P 1
+#define FG_P 0
+
+char **tokenize(char *, char);
+void prompt();
+int command_handler(char **);
+void execute_command(char **, int);
+
+int prompt_flag;
+
+int main(int argc, char *argv[])
+{
+	char line[MAX_INPUT_SIZE];
+	char **tokens;
+	prompt_flag = 1;
+
+	while (1)
+	{
+		if (prompt_flag)
+		{
+			prompt();
+		}
+
+		bzero(line, sizeof(line));
+		scanf("%[^\n]", line);
+		getchar();
+
+		line[strlen(line)] = '\n'; // terminate with new line
+		tokens = tokenize(line, '\n');
+
+		if (tokens[0] == NULL)
+		{
+			free(tokens);
+			continue;
+		}
+
+		command_handler(tokens);
+
+		while (waitpid(-1, NULL, WNOHANG) > 0)
+		{
+			printf("Shell: Background process finished\n");
+		}
+	}
+	return 0;
+}
+
+/* Splits the string by delim and returns the array of tokens
  *
  */
-char **tokenize(char *line)
+char **tokenize(char *line, char delim)
 {
 	char **tokens = (char **)malloc(MAX_NUM_TOKENS * sizeof(char *));
 	char *token = (char *)malloc(MAX_TOKEN_SIZE * sizeof(char));
 	int i, tokenIndex = 0, tokenNo = 0;
 
-	for (i = 0; i < strlen(line); i++)
+	if (delim == '\n' || delim == ' ' || delim == '\t')
 	{
-
-		char readChar = line[i];
-
-		if (readChar == ' ' || readChar == '\n' || readChar == '\t')
+		for (i = 0; i < strlen(line); i++)
 		{
-			token[tokenIndex] = '\0';
-			if (tokenIndex != 0)
+
+			char readChar = line[i];
+
+			if (readChar == ' ' || readChar == '\n' || readChar == '\t')
 			{
-				tokens[tokenNo] = (char *)malloc(MAX_TOKEN_SIZE * sizeof(char));
-				strcpy(tokens[tokenNo++], token);
-				tokenIndex = 0;
+				token[tokenIndex] = '\0';
+				if (tokenIndex != 0)
+				{
+					tokens[tokenNo] = (char *)malloc(MAX_TOKEN_SIZE * sizeof(char));
+					strcpy(tokens[tokenNo++], token);
+					tokenIndex = 0;
+				}
+			}
+			else
+			{
+				token[tokenIndex++] = readChar;
 			}
 		}
-		else
+	}
+	else
+	{
+		for (i = 0; i < strlen(line); i++)
 		{
-			token[tokenIndex++] = readChar;
+			char readChar = line[i];
+			if (readChar == delim)
+			{
+				token[tokenIndex] = '\0';
+				if (tokenIndex != 0)
+				{
+					tokens[tokenNo] = (char *)malloc(MAX_TOKEN_SIZE * sizeof(char));
+					strcpy(tokens[tokenNo++], token);
+					tokenIndex = 0;
+				}
+			}
+			else
+			{
+				token[tokenIndex++] = readChar;
+			}
 		}
 	}
 
@@ -44,87 +114,72 @@ char **tokenize(char *line)
 	return tokens;
 }
 
-int main(int argc, char *argv[])
+void prompt()
 {
-	char line[MAX_INPUT_SIZE];
-	char **tokens;
-	int i, background = 0;
+	printf(">$ ");
+}
 
-	while (1)
+int command_handler(char *tokens[])
+{
+	int i, process_type = FG_P;
+
+	for (i = 0; tokens[i] != NULL; i++)
 	{
-		bzero(line, sizeof(line));
-		printf(">$ ");
-		scanf("%[^\n]", line);
-		getchar();
-
-		while (waitpid(-1, NULL, WNOHANG) > 0)
+		if (!strcmp(tokens[i], "&"))
 		{
-			printf("Shell: Background process finished\n");
+			process_type = BG_P;
+			tokens[i] = NULL;
 		}
-
-		line[strlen(line)] = '\n'; // terminate with new line
-		tokens = tokenize(line);
-
-		for (i = 0; tokens[i] != NULL; i++)
-		{
-			if (!strcmp(tokens[i], "&"))
-			{
-				background = 1;
-				tokens[i] = NULL;
-			}
-		}
-
-		if (tokens[0] == NULL)
-		{
-			free(tokens);
-			continue;
-		}
-		else if (!strcmp(tokens[0], "exit"))
-		{
-			kill(0, SIGKILL);
-			exit(0);
-		}
-
-		else if (!strcmp(tokens[0], "cd"))
-		{
-			if (tokens[1] == NULL)
-			{
-				printf("Shell: Incorrect command\n");
-			}
-			else if (chdir(tokens[1]))
-			{
-				printf("Shell: Incorrect command\n");
-			}
-			continue;
-		}
-
-		int fc = fork();
-		if (fc < 0)
-		{
-			fprintf(stderr, "%s\n", "Unable to fork");
-		}
-		else if (fc == 0)
-		{
-			execvp(tokens[0], tokens);
-			printf("Command execution failed\n");
-			_exit(1);
-		}
-		else if (!background)
-		{
-			waitpid(fc, NULL, 0);
-		}
-		else
-		{
-			printf("Background process created with pid: %d\n", fc);
-			background = 0;
-		}
-
-		// Freeing the allocated memory
-		for (i = 0; tokens[i] != NULL; i++)
-		{
-			free(tokens[i]);
-		}
-		free(tokens);
 	}
+
+	if (!strcmp(tokens[0], "exit"))
+	{
+		kill(0, SIGKILL);
+		exit(0);
+	}
+	else if (!strcmp(tokens[0], "cd"))
+	{
+		if (tokens[1] == NULL)
+		{
+			printf("Shell: Incorrect command\n");
+		}
+		else if (chdir(tokens[1]))
+		{
+			printf("Shell: Incorrect command\n");
+		}
+	}
+
+	execute_command(tokens, process_type);
 	return 0;
+}
+
+void execute_command(char *tokens[], int process_type)
+{
+	int fc = fork();
+	if (fc < 0)
+	{
+		fprintf(stderr, "%s\n", "Unable to fork");
+	}
+	else if (fc == 0)
+	{
+		execvp(tokens[0], tokens);
+		printf("Command execution failed\n");
+		_exit(1);
+	}
+	else if (!process_type)
+	{
+		waitpid(fc, NULL, 0);
+	}
+	else
+	{
+		printf("Background process created with pid: %d\n", fc);
+		process_type = FG_P;
+	}
+
+	// Freeing the allocated memory
+	for (int i = 0; tokens[i] != NULL; i++)
+	{
+		free(tokens[i]);
+	}
+	free(tokens);
 }
