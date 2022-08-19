@@ -47,7 +47,7 @@ int main(int argc, char *argv[])
 {
 	char line[MAX_INPUT_SIZE];
 	char **tokens;
-	int i;
+	int i, background = 0;
 
 	while (1)
 	{
@@ -56,20 +56,35 @@ int main(int argc, char *argv[])
 		scanf("%[^\n]", line);
 		getchar();
 
+		while (waitpid(-1, NULL, WNOHANG) > 0)
+		{
+			printf("Shell: Background process finished\n");
+		}
+
 		line[strlen(line)] = '\n'; // terminate with new line
 		tokens = tokenize(line);
 
+		for (i = 0; tokens[i] != NULL; i++)
+		{
+			if (!strcmp(tokens[i], "&"))
+			{
+				background = 1;
+				tokens[i] = NULL;
+			}
+		}
+
 		if (tokens[0] == NULL)
 		{
+			free(tokens);
 			continue;
 		}
-		else if (strcmp(tokens[0], "cd") == 0)
+		else if (!strcmp(tokens[0], "cd"))
 		{
 			if (tokens[1] == NULL)
 			{
 				printf("Shell: Incorrect command\n");
 			}
-			else if (chdir(tokens[1]) != 0)
+			else if (chdir(tokens[1]))
 			{
 				printf("Shell: Incorrect command\n");
 			}
@@ -87,9 +102,14 @@ int main(int argc, char *argv[])
 			printf("Command execution failed\n");
 			_exit(1);
 		}
+		else if (!background)
+		{
+			waitpid(fc, NULL, 0);
+		}
 		else
 		{
-			int wc = wait(NULL);
+			printf("Background process created with pid: %d\n", fc);
+			background = 0;
 		}
 
 		// Freeing the allocated memory
