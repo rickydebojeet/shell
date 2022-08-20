@@ -26,6 +26,7 @@ pid_t pid;
 
 int main(int argc, char *argv[])
 {
+	pid_t shellpid = getpid();
 	char line[MAX_INPUT_SIZE];
 	char **tokens;
 	prompt_flag = 1;
@@ -36,12 +37,15 @@ int main(int argc, char *argv[])
 	sigaction(SIGCHLD, &act_child, 0);
 	sigaction(SIGINT, &act_parent, 0);
 
+	setpgid(shellpid, shellpid);
+
 	while (1)
 	{
 		if (prompt_flag)
 		{
 			prompt();
 		}
+		prompt_flag = 1;
 
 		bzero(line, sizeof(line));
 		scanf("%[^\n]", line);
@@ -53,6 +57,23 @@ int main(int argc, char *argv[])
 		if (tokens[0] == NULL)
 		{
 			free(tokens);
+			continue;
+		}
+		else if (!strcmp(tokens[0], "exit"))
+		{
+			kill(0, SIGKILL);
+			exit(0);
+		}
+		else if (!strcmp(tokens[0], "cd"))
+		{
+			if (tokens[1] == NULL)
+			{
+				printf("Shell: Incorrect command\n");
+			}
+			else if (chdir(tokens[1]))
+			{
+				printf("Shell: Incorrect command\n");
+			}
 			continue;
 		}
 
@@ -138,23 +159,6 @@ int command_handler(char *tokens[])
 		}
 	}
 
-	if (!strcmp(tokens[0], "exit"))
-	{
-		kill(0, SIGKILL);
-		exit(0);
-	}
-	else if (!strcmp(tokens[0], "cd"))
-	{
-		if (tokens[1] == NULL)
-		{
-			printf("Shell: Incorrect command\n");
-		}
-		else if (chdir(tokens[1]))
-		{
-			printf("Shell: Incorrect command\n");
-		}
-	}
-
 	execute_command(tokens, process_type);
 	return 0;
 }
@@ -168,6 +172,10 @@ void execute_command(char *tokens[], int process_type)
 	}
 	else if (pid == 0)
 	{
+		if (!process_type)
+		{
+			setpgid(0, 0);
+		}
 		signal(SIGINT, SIG_IGN);
 		execvp(tokens[0], tokens);
 		printf("Command execution failed\n");
@@ -194,12 +202,14 @@ void execute_command(char *tokens[], int process_type)
 void int_handler_child(int sig)
 {
 	while (waitpid(-1, NULL, WNOHANG) > 0)
-	{
-		printf("Shell: Background process finished\n");
-	}
+		;
 }
 
 void int_handler_parent(int p)
 {
-	printf("Shell: Ctrl+C pressed\n");
+	if (kill(-pid, SIGTERM) == 0)
+	{
+		printf("Shell: Killing child process\n");
+		prompt_flag = 0;
+	}
 }
