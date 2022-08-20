@@ -54,6 +54,14 @@ int main(int argc, char *argv[])
 
 	while (1)
 	{
+		for (int i = 0; i < 64; i++)
+		{
+			if (proc[i] != -1 && waitpid(proc[i], NULL, WNOHANG) > 0)
+			{
+				printf("Shell: Background process finished with pid: %d\n", proc[i]);
+				proc[i] = -1;
+			}
+		}
 		process_type = FOREGROUND_COMMAND; // default
 		if (prompt_flag)
 		{
@@ -64,14 +72,6 @@ int main(int argc, char *argv[])
 		bzero(line, sizeof(line)); // clear line
 		scanf("%[^\n]", line);	   // read line
 		getchar();				   // read newline
-
-		for (int i = 0; i < 64; i++)
-		{
-			if (proc[i] != -1 && waitpid(proc[i], NULL, WNOHANG) > 0)
-			{
-				proc[i] = -1;
-			}
-		}
 
 		line[strlen(line)] = '\n'; // terminate with new line
 		tokens = tokenize(line);
