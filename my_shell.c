@@ -105,6 +105,70 @@ int main(int argc, char *argv[])
 		{
 			program_closer(tokens);
 		}
+		else if (process_type == PARALLEL_COMMAND)
+		{
+			char *command = strtok(line, "&&&");
+			while (command != NULL)
+			{
+				char **temp_tokens = tokenize(command);
+				if (temp_tokens[0] == NULL || temp_tokens[0][0] == ' ')
+				{
+					free(temp_tokens);
+					break;
+				}
+				if (!strcmp(temp_tokens[0], "cd"))
+				{
+					change_directory(temp_tokens);
+				}
+				else if (!strcmp(temp_tokens[0], "exit"))
+				{
+					program_closer_temp(temp_tokens, tokens);
+				}
+				else
+				{
+					pid = fork();
+					if (pid < 0)
+					{
+						fprintf(stderr, "%s\n", "Unable to fork");
+					}
+					else if (pid == 0)
+					{
+						signal(SIGINT, SIG_IGN);
+						execvp(temp_tokens[0], temp_tokens);
+						printf("Command execution failed\n");
+						_exit(1);
+					}
+					else
+					{
+						for (int j = 0; j < 64; j++)
+						{
+							if (proc[j] == -1)
+							{
+								proc[j] = pid;
+								break;
+							}
+						}
+					}
+				}
+
+				for (i = 0; temp_tokens[i] != NULL; i++)
+				{
+					free(temp_tokens[i]);
+				}
+				free(temp_tokens);
+
+				command = strtok(NULL, "&&&");
+			}
+
+			for (i = 0; i < 64; i++)
+			{
+				if (proc[i] != -1)
+				{
+					waitpid(proc[i], NULL, 0);
+					proc[i] = -1;
+				}
+			}
+		}
 		else if (process_type == SERIAL_COMMAND)
 		{
 			char *command = strtok(line, "&&");
@@ -136,70 +200,6 @@ int main(int argc, char *argv[])
 				free(temp_tokens);
 
 				command = strtok(NULL, "&&");
-			}
-		}
-		else if (process_type == PARALLEL_COMMAND)
-		{
-			char *command = strtok(line, "&&&");
-			while (command != NULL)
-			{
-				char **temp_tokens = tokenize(command);
-				if (temp_tokens[0] == NULL || temp_tokens[0][0] == ' ')
-				{
-					free(temp_tokens);
-					break;
-				}
-				if (!strcmp(temp_tokens[0], "cd"))
-				{
-					change_directory(temp_tokens);
-				}
-				else if (!strcmp(temp_tokens[0], "exit"))
-				{
-					program_closer_temp(temp_tokens, tokens);
-				}
-				else
-				{
-					pid_t kid = fork();
-					if (kid < 0)
-					{
-						fprintf(stderr, "%s\n", "Unable to fork");
-					}
-					else if (kid == 0)
-					{
-						signal(SIGINT, SIG_IGN);
-						execvp(tokens[0], tokens);
-						printf("Command execution failed\n");
-						_exit(1);
-					}
-					else
-					{
-						for (int j = 0; j < 64; j++)
-						{
-							if (proc[j] == -1)
-							{
-								proc[j] = kid;
-								break;
-							}
-						}
-					}
-				}
-
-				for (i = 0; temp_tokens[i] != NULL; i++)
-				{
-					free(temp_tokens[i]);
-				}
-				free(temp_tokens);
-
-				command = strtok(NULL, "&&&");
-			}
-
-			for (i = 0; i < 64; i++)
-			{
-				if (proc[i] != -1)
-				{
-					waitpid(proc[i], NULL, 0);
-					proc[i] = -1;
-				}
 			}
 		}
 		else if (!strcmp(tokens[0], "cd"))
