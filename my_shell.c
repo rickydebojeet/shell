@@ -23,6 +23,7 @@ void execute_command(char **, enum command_type);
 void int_handler_child(int);
 void int_handler_parent(int);
 void program_closer(char **);
+void program_closer_temp(char **, char **);
 void change_directory(char **);
 
 int prompt_flag; // 1 for prompt, 0 for no prompt
@@ -121,7 +122,7 @@ int main(int argc, char *argv[])
 				}
 				else if (!strcmp(temp_tokens[0], "exit"))
 				{
-					program_closer(temp_tokens);
+					program_closer_temp(temp_tokens, tokens);
 				}
 				else
 				{
@@ -154,7 +155,7 @@ int main(int argc, char *argv[])
 				}
 				else if (!strcmp(temp_tokens[0], "exit"))
 				{
-					program_closer(temp_tokens);
+					program_closer_temp(temp_tokens, tokens);
 				}
 				else
 				{
@@ -319,12 +320,31 @@ void int_handler_parent(int p)
 void program_closer(char *tokens[])
 {
 	int i;
+	for (i = 0; i < 64; i++)
+	{
+		if (proc[i] != -1)
+		{
+			kill(proc[i], SIGKILL);
+			proc[i] = -1;
+		}
+	}
 	for (i = 0; tokens[i] != NULL; i++)
 	{
 		free(tokens[i]);
 	}
 	free(tokens);
 	exit(0);
+}
+
+void program_closer_temp(char *temp_tokens[], char *tokens[])
+{
+	int i;
+	for (i = 0; temp_tokens[i] != NULL; i++)
+	{
+		free(temp_tokens[i]);
+	}
+	free(temp_tokens);
+	program_closer(tokens);
 }
 
 void change_directory(char *tokens[])
