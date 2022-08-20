@@ -50,6 +50,7 @@ int main(int argc, char *argv[])
 
 	while (1)
 	{
+		// Check for zombie background processes and reap it
 		for (int i = 0; i < 64; i++)
 		{
 			if (proc[i] != -1 && waitpid(proc[i], NULL, WNOHANG) > 0)
@@ -58,7 +59,7 @@ int main(int argc, char *argv[])
 				proc[i] = -1;
 			}
 		}
-		process_type = FOREGROUND_COMMAND;
+		process_type = FOREGROUND_COMMAND; // default process type
 		if (prompt_flag)
 		{
 			printf(">$ ");
