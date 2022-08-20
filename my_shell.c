@@ -18,16 +18,13 @@ enum command_type
 };
 
 char **tokenize(char *);
-void prompt();
 void execute_command(char **, enum command_type);
-void int_handler_child(int);
 void int_handler_parent(int);
 void program_closer(char **);
 void program_closer_temp(char **, char **);
 void change_directory(char **);
 
 int prompt_flag; // 1 for prompt, 0 for no prompt
-struct sigaction act_child;
 struct sigaction act_parent;
 pid_t pid;
 int proc[64];
@@ -45,10 +42,8 @@ int main(int argc, char *argv[])
 		proc[i] = -1;
 	}
 
-	act_child.sa_handler = int_handler_child;
 	act_parent.sa_handler = int_handler_parent;
 
-	// sigaction(SIGCHLD, &act_child, 0);
 	sigaction(SIGINT, &act_parent, 0);
 
 	setpgid(shellpid, shellpid); // set shell as process group leader
@@ -63,10 +58,10 @@ int main(int argc, char *argv[])
 				proc[i] = -1;
 			}
 		}
-		process_type = FOREGROUND_COMMAND; // default
+		process_type = FOREGROUND_COMMAND;
 		if (prompt_flag)
 		{
-			prompt();
+			printf(">$ ");
 		}
 
 		bzero(line, sizeof(line)); // clear line
@@ -77,6 +72,7 @@ int main(int argc, char *argv[])
 		prompt_flag = 1;
 		tokens = tokenize(line);
 
+		// finding the command type
 		for (i = 0; tokens[i] != NULL; i++)
 		{
 			if (!strcmp(tokens[i], "&"))
@@ -96,6 +92,7 @@ int main(int argc, char *argv[])
 			}
 		}
 
+		// Blank line
 		if (tokens[0] == NULL)
 		{
 			free(tokens);
@@ -206,6 +203,7 @@ int main(int argc, char *argv[])
 		{
 			change_directory(tokens);
 		}
+		// Background or Foreground Command
 		else
 		{
 			execute_command(tokens, process_type);
@@ -221,8 +219,11 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
-/* Splits the string by delim and returns the array of tokens
+/* Function to tokenize the input line.
+ * The functions splits the input line into tokens and returns the array of tokens.
  *
+ * @param line Input from stdin
+ * @return array of tokens
  */
 char **tokenize(char *line)
 {
@@ -256,18 +257,42 @@ char **tokenize(char *line)
 	return tokens;
 }
 
-void prompt()
+/*
+ * Function to change the current working directory.
+ * Uses the chdir() system call to change the current working directory.
+ * If the directory is not found, prints an error message.
+ *
+ * @param tokens Array of tokens
+ */
+void change_directory(char *tokens[])
 {
-	printf(">$ ");
+	if (tokens[1] == NULL)
+	{
+		printf("Shell: Incorrect command\n");
+	}
+	else if (chdir(tokens[1]))
+	{
+		printf("Shell: Incorrect command\n");
+	}
 }
 
+/*
+ * Function to execute the command.
+ * Uses the execvp() system call to execute the command.
+ * If the command is not found, prints an error message.
+ *
+ * @param tokens Array of tokens
+ * @param process_type Type of process
+ */
 void execute_command(char *tokens[], enum command_type process_type)
 {
 	pid = fork();
+	// Error in forking
 	if (pid < 0)
 	{
 		fprintf(stderr, "%s\n", "Unable to fork");
 	}
+	// Child Process
 	else if (pid == 0)
 	{
 		if (process_type != BACKGROUND_COMMAND)
@@ -279,10 +304,13 @@ void execute_command(char *tokens[], enum command_type process_type)
 		printf("Command execution failed\n");
 		_exit(1);
 	}
+	// Not a Bacground Process; wait for the child process to finish and reap it
 	else if (process_type != BACKGROUND_COMMAND)
 	{
 		waitpid(pid, NULL, 0);
 	}
+	// Background Process; do not wait for the child process to finish
+	// instead store the pid in an array to reap it later
 	else
 	{
 		for (int j = 0; j < 64; j++)
@@ -295,17 +323,6 @@ void execute_command(char *tokens[], enum command_type process_type)
 		}
 		printf("Background process created with pid: %d\n", pid);
 	}
-}
-
-void int_handler_child(int sig)
-{
-	// for (int i = 0; i < 64; i++)
-	// {
-	// 	if (proc[i] != -1 && waitpid(proc[i], NULL, WNOHANG) > 0)
-	// 	{
-	// 		proc[i] = -1;
-	// 	}
-	// }
 }
 
 void int_handler_parent(int p)
@@ -349,16 +366,4 @@ void program_closer_temp(char *temp_tokens[], char *tokens[])
 	}
 	free(temp_tokens);
 	program_closer(tokens);
-}
-
-void change_directory(char *tokens[])
-{
-	if (tokens[1] == NULL)
-	{
-		printf("Shell: Incorrect command\n");
-	}
-	else if (chdir(tokens[1]))
-	{
-		printf("Shell: Incorrect command\n");
-	}
 }
