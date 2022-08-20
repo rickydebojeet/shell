@@ -25,39 +25,53 @@ void int_handler_parent(int);
 void program_closer(char **);
 void change_directory(char **);
 
-int prompt_flag;
+int prompt_flag; // 1 for prompt, 0 for no prompt
 struct sigaction act_child;
 struct sigaction act_parent;
 pid_t pid;
+int proc[64];
 
 int main(int argc, char *argv[])
 {
 	pid_t shellpid = getpid();
 	char line[MAX_INPUT_SIZE];
 	char **tokens;
-	prompt_flag = 1;
+	prompt_flag = 1; // prompt by default
 	int i, process_type;
+
+	for (i = 0; i < 64; i++)
+	{
+		proc[i] = -1;
+	}
 
 	act_child.sa_handler = int_handler_child;
 	act_parent.sa_handler = int_handler_parent;
 
-	sigaction(SIGCHLD, &act_child, 0);
+	// sigaction(SIGCHLD, &act_child, 0);
 	sigaction(SIGINT, &act_parent, 0);
 
-	setpgid(shellpid, shellpid);
+	setpgid(shellpid, shellpid); // set shell as process group leader
 
 	while (1)
 	{
-		process_type = FOREGROUND_COMMAND;
+		process_type = FOREGROUND_COMMAND; // default
 		if (prompt_flag)
 		{
 			prompt();
 		}
 		prompt_flag = 1;
 
-		bzero(line, sizeof(line));
-		scanf("%[^\n]", line);
-		getchar();
+		bzero(line, sizeof(line)); // clear line
+		scanf("%[^\n]", line);	   // read line
+		getchar();				   // read newline
+
+		for (int i = 0; i < 64; i++)
+		{
+			if (proc[i] != -1 && waitpid(proc[i], NULL, WNOHANG) > 0)
+			{
+				proc[i] = -1;
+			}
+		}
 
 		line[strlen(line)] = '\n'; // terminate with new line
 		tokens = tokenize(line);
@@ -125,15 +139,76 @@ int main(int argc, char *argv[])
 		}
 		else if (process_type == PARALLEL_COMMAND)
 		{
-			
-		}
+			char *command = strtok(line, "&&&");
+			while (command != NULL)
+			{
+				char **temp_tokens = tokenize(command);
+				if (temp_tokens[0] == NULL || temp_tokens[0][0] == ' ')
+				{
+					free(temp_tokens);
+					break;
+				}
+				if (!strcmp(temp_tokens[0], "cd"))
+				{
+					change_directory(temp_tokens);
+				}
+				else if (!strcmp(temp_tokens[0], "exit"))
+				{
+					program_closer(temp_tokens);
+				}
+				else
+				{
+					pid_t kid = fork();
+					if (kid < 0)
+					{
+						fprintf(stderr, "%s\n", "Unable to fork");
+					}
+					else if (kid == 0)
+					{
+						signal(SIGINT, SIG_IGN);
+						execvp(tokens[0], tokens);
+						printf("Command execution failed\n");
+						_exit(1);
+					}
+					else
+					{
+						for (int j = 0; j < 64; j++)
+						{
+							if (proc[j] == -1)
+							{
+								proc[j] = kid;
+								break;
+							}
+						}
+					}
+				}
 
-		if (!strcmp(tokens[0], "cd"))
+				for (i = 0; temp_tokens[i] != NULL; i++)
+				{
+					free(temp_tokens[i]);
+				}
+				free(temp_tokens);
+
+				command = strtok(NULL, "&&&");
+			}
+
+			for (i = 0; i < 64; i++)
+			{
+				if (proc[i] != -1)
+				{
+					waitpid(proc[i], NULL, 0);
+					proc[i] = -1;
+				}
+			}
+		}
+		else if (!strcmp(tokens[0], "cd"))
 		{
 			change_directory(tokens);
 		}
-
-		// execute_command(tokens, process_type);
+		else
+		{
+			execute_command(tokens, process_type);
+		}
 
 		// Freeing the allocated memory
 		for (int i = 0; tokens[i] != NULL; i++)
@@ -203,25 +278,33 @@ void execute_command(char *tokens[], enum command_type process_type)
 		printf("Command execution failed\n");
 		_exit(1);
 	}
-	// else if (!process_type)
-	// {
-	// 	waitpid(pid, NULL, 0);
-	// }
-	// else
-	// {
-	// 	printf("Background process created with pid: %d\n", pid);
-	// 	process_type = FOREGROUND_COMMAND;
-	// }
-	else
+	else if (process_type != BACKGROUND_COMMAND)
 	{
 		waitpid(pid, NULL, 0);
+	}
+	else
+	{
+		for (int j = 0; j < 64; j++)
+		{
+			if (proc[j] == -1)
+			{
+				proc[j] = pid;
+				break;
+			}
+		}
+		printf("Background process created with pid: %d\n", pid);
 	}
 }
 
 void int_handler_child(int sig)
 {
-	while (waitpid(-1, NULL, WNOHANG) > 0)
-		;
+	// for (int i = 0; i < 64; i++)
+	// {
+	// 	if (proc[i] != -1 && waitpid(proc[i], NULL, WNOHANG) > 0)
+	// 	{
+	// 		proc[i] = -1;
+	// 	}
+	// }
 }
 
 void int_handler_parent(int p)
