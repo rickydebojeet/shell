@@ -68,13 +68,13 @@ int main(int argc, char *argv[])
 		{
 			prompt();
 		}
-		prompt_flag = 1;
 
 		bzero(line, sizeof(line)); // clear line
 		scanf("%[^\n]", line);	   // read line
 		getchar();				   // read newline
 
 		line[strlen(line)] = '\n'; // terminate with new line
+		prompt_flag = 1;
 		tokens = tokenize(line);
 
 		for (i = 0; tokens[i] != NULL; i++)
@@ -313,6 +313,10 @@ void int_handler_parent(int p)
 	if (kill(-pid, SIGTERM) == 0)
 	{
 		printf("Shell: Killing child process\n");
+		if (waitpid(pid, NULL, 0) > 0)
+		{
+			printf("Shell: Reaping done. Press Enter\n");
+		}
 		prompt_flag = 0;
 	}
 }
