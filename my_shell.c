@@ -9,15 +9,21 @@
 #define MAX_TOKEN_SIZE 64
 #define MAX_NUM_TOKENS 64
 
-#define BG_P 1
-#define FG_P 0
+enum command_type
+{
+	BACKGROUND_COMMAND,
+	FOREGROUND_COMMAND,
+	SERIAL_COMMAND,
+	PARALLEL_COMMAND
+};
 
-char **tokenize(char *, char);
+char **tokenize(char *);
 void prompt();
-int command_handler(char **);
-void execute_command(char **, int);
+void execute_command(char **, enum command_type);
 void int_handler_child(int);
 void int_handler_parent(int);
+void program_closer(char **);
+void change_directory(char **);
 
 int prompt_flag;
 struct sigaction act_child;
@@ -30,6 +36,7 @@ int main(int argc, char *argv[])
 	char line[MAX_INPUT_SIZE];
 	char **tokens;
 	prompt_flag = 1;
+	int i, process_type;
 
 	act_child.sa_handler = int_handler_child;
 	act_parent.sa_handler = int_handler_parent;
@@ -41,6 +48,7 @@ int main(int argc, char *argv[])
 
 	while (1)
 	{
+		process_type = FOREGROUND_COMMAND;
 		if (prompt_flag)
 		{
 			prompt();
@@ -52,7 +60,26 @@ int main(int argc, char *argv[])
 		getchar();
 
 		line[strlen(line)] = '\n'; // terminate with new line
-		tokens = tokenize(line, '\n');
+		tokens = tokenize(line);
+
+		for (i = 0; tokens[i] != NULL; i++)
+		{
+			if (!strcmp(tokens[i], "&"))
+			{
+				process_type = BACKGROUND_COMMAND;
+				tokens[i] = NULL;
+			}
+			else if (!strcmp(tokens[i], "&&"))
+			{
+				process_type = SERIAL_COMMAND;
+				tokens[i] = NULL;
+			}
+			else if (!strcmp(tokens[i], "&&&"))
+			{
+				process_type = PARALLEL_COMMAND;
+				tokens[i] = NULL;
+			}
+		}
 
 		if (tokens[0] == NULL)
 		{
@@ -61,23 +88,59 @@ int main(int argc, char *argv[])
 		}
 		else if (!strcmp(tokens[0], "exit"))
 		{
-			kill(0, SIGKILL);
-			exit(0);
+			program_closer(tokens);
 		}
-		else if (!strcmp(tokens[0], "cd"))
+		else if (process_type == SERIAL_COMMAND)
 		{
-			if (tokens[1] == NULL)
+			char *command = strtok(line, "&&");
+			while (command != NULL)
 			{
-				printf("Shell: Incorrect command\n");
+				char **temp_tokens = tokenize(command);
+				if (temp_tokens[0] == NULL || temp_tokens[0][0] == ' ')
+				{
+					free(temp_tokens);
+					break;
+				}
+				else if (!strcmp(temp_tokens[0], "cd"))
+				{
+					change_directory(temp_tokens);
+				}
+				else if (!strcmp(temp_tokens[0], "exit"))
+				{
+					program_closer(temp_tokens);
+				}
+				else
+				{
+					execute_command(temp_tokens, process_type);
+				}
+
+				for (i = 0; temp_tokens[i] != NULL; i++)
+				{
+					free(temp_tokens[i]);
+				}
+				free(temp_tokens);
+
+				command = strtok(NULL, "&&");
 			}
-			else if (chdir(tokens[1]))
-			{
-				printf("Shell: Incorrect command\n");
-			}
-			continue;
+		}
+		else if (process_type == PARALLEL_COMMAND)
+		{
+			
 		}
 
-		command_handler(tokens);
+		if (!strcmp(tokens[0], "cd"))
+		{
+			change_directory(tokens);
+		}
+
+		// execute_command(tokens, process_type);
+
+		// Freeing the allocated memory
+		for (int i = 0; tokens[i] != NULL; i++)
+		{
+			free(tokens[i]);
+		}
+		free(tokens);
 	}
 	return 0;
 }
@@ -85,54 +148,30 @@ int main(int argc, char *argv[])
 /* Splits the string by delim and returns the array of tokens
  *
  */
-char **tokenize(char *line, char delim)
+char **tokenize(char *line)
 {
 	char **tokens = (char **)malloc(MAX_NUM_TOKENS * sizeof(char *));
 	char *token = (char *)malloc(MAX_TOKEN_SIZE * sizeof(char));
 	int i, tokenIndex = 0, tokenNo = 0;
 
-	if (delim == '\n' || delim == ' ' || delim == '\t')
+	for (i = 0; i < strlen(line); i++)
 	{
-		for (i = 0; i < strlen(line); i++)
+
+		char readChar = line[i];
+
+		if (readChar == ' ' || readChar == '\n' || readChar == '\t')
 		{
-
-			char readChar = line[i];
-
-			if (readChar == ' ' || readChar == '\n' || readChar == '\t')
+			token[tokenIndex] = '\0';
+			if (tokenIndex != 0)
 			{
-				token[tokenIndex] = '\0';
-				if (tokenIndex != 0)
-				{
-					tokens[tokenNo] = (char *)malloc(MAX_TOKEN_SIZE * sizeof(char));
-					strcpy(tokens[tokenNo++], token);
-					tokenIndex = 0;
-				}
-			}
-			else
-			{
-				token[tokenIndex++] = readChar;
+				tokens[tokenNo] = (char *)malloc(MAX_TOKEN_SIZE * sizeof(char));
+				strcpy(tokens[tokenNo++], token);
+				tokenIndex = 0;
 			}
 		}
-	}
-	else
-	{
-		for (i = 0; i < strlen(line); i++)
+		else
 		{
-			char readChar = line[i];
-			if (readChar == delim)
-			{
-				token[tokenIndex] = '\0';
-				if (tokenIndex != 0)
-				{
-					tokens[tokenNo] = (char *)malloc(MAX_TOKEN_SIZE * sizeof(char));
-					strcpy(tokens[tokenNo++], token);
-					tokenIndex = 0;
-				}
-			}
-			else
-			{
-				token[tokenIndex++] = readChar;
-			}
+			token[tokenIndex++] = readChar;
 		}
 	}
 
@@ -146,24 +185,7 @@ void prompt()
 	printf(">$ ");
 }
 
-int command_handler(char *tokens[])
-{
-	int i, process_type = FG_P;
-
-	for (i = 0; tokens[i] != NULL; i++)
-	{
-		if (!strcmp(tokens[i], "&"))
-		{
-			process_type = BG_P;
-			tokens[i] = NULL;
-		}
-	}
-
-	execute_command(tokens, process_type);
-	return 0;
-}
-
-void execute_command(char *tokens[], int process_type)
+void execute_command(char *tokens[], enum command_type process_type)
 {
 	pid = fork();
 	if (pid < 0)
@@ -172,7 +194,7 @@ void execute_command(char *tokens[], int process_type)
 	}
 	else if (pid == 0)
 	{
-		if (!process_type)
+		if (process_type != BACKGROUND_COMMAND)
 		{
 			setpgid(0, 0);
 		}
@@ -181,22 +203,19 @@ void execute_command(char *tokens[], int process_type)
 		printf("Command execution failed\n");
 		_exit(1);
 	}
-	else if (!process_type)
+	// else if (!process_type)
+	// {
+	// 	waitpid(pid, NULL, 0);
+	// }
+	// else
+	// {
+	// 	printf("Background process created with pid: %d\n", pid);
+	// 	process_type = FOREGROUND_COMMAND;
+	// }
+	else
 	{
 		waitpid(pid, NULL, 0);
 	}
-	else
-	{
-		printf("Background process created with pid: %d\n", pid);
-		process_type = FG_P;
-	}
-
-	// Freeing the allocated memory
-	for (int i = 0; tokens[i] != NULL; i++)
-	{
-		free(tokens[i]);
-	}
-	free(tokens);
 }
 
 void int_handler_child(int sig)
@@ -211,5 +230,28 @@ void int_handler_parent(int p)
 	{
 		printf("Shell: Killing child process\n");
 		prompt_flag = 0;
+	}
+}
+
+void program_closer(char *tokens[])
+{
+	int i;
+	for (i = 0; tokens[i] != NULL; i++)
+	{
+		free(tokens[i]);
+	}
+	free(tokens);
+	exit(0);
+}
+
+void change_directory(char *tokens[])
+{
+	if (tokens[1] == NULL)
+	{
+		printf("Shell: Incorrect command\n");
+	}
+	else if (chdir(tokens[1]))
+	{
+		printf("Shell: Incorrect command\n");
 	}
 }
