@@ -62,7 +62,7 @@ int main(int argc, char *argv[])
 		process_type = FOREGROUND_COMMAND; // default process type
 		if (prompt_flag)
 		{
-			printf(">$ ");
+			printf("$ ");
 		}
 
 		bzero(line, sizeof(line)); // clear line
