@@ -4,6 +4,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #define MAX_INPUT_SIZE 1024
 #define MAX_TOKEN_SIZE 64
@@ -363,6 +365,13 @@ void program_closer(char *tokens[])
 		if (proc[i] != -1)
 		{
 			kill(proc[i], SIGKILL);
+		}
+	}
+	// Check for zombie background processes and reap it
+	for (int i = 0; i < 64; i++)
+	{
+		if (proc[i] != -1 && waitpid(proc[i], NULL, WNOHANG) > 0)
+		{
 			proc[i] = -1;
 		}
 	}
@@ -372,7 +381,7 @@ void program_closer(char *tokens[])
 		free(tokens[i]);
 	}
 	free(tokens);
-	exit(0);
+	_exit(0);
 }
 
 /*
